@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% load custom_tags %}
+{% block page_container %}
+    <div class="wrap-left" style="padding-right: 30px">
+        <div class="new-article-notify hide text-center">
+            <a href="{{ request.path }}">有<span></span>条新消息</a>
+        </div>
+        {% for article in articles_list reversed %}
+            <div article_id="{{ article.id }}" class="article-box row">
+                <div class="col-md-4">
+                    <img class="article-head-img" src="/static/{{ article.head_img|truncate_url }}"/>
+                </div>
+
+                <div class="article-brief col-md-8">
+                    <a href="{% url 'article_detail' article.id %}" class="article-title">{{ article.title }}</a>
+                    <div class="article-brief-info">
+                        <span>{{ article.author.name }}</span>
+                        <span style="margin-left: 20px">{{ article.pub_date }}</span>
+                        <span>{% filter_comment article as comments %}</span>
+                        <span class="glyphicon glyphicon-comment"
+                              style="margin-left: 20px;margin-right: 5px;">{{ comments.comment_count }}</span>
+                        <span class="glyphicon glyphicon-thumbs-up"
+                              style="margin-left: 20px;margin-right: 5px;">{{ comments.thumb_count }}</span>
+                    </div>
+                    <div class="article-brief-text">
+                        <span>{{ article.brief }}</span>
+                    </div>
+                </div>
+
+            </div>
+            <hr>
+        {% endfor %}
+    </div>
+
+    <div class="wrap-right">
+        <hr>
+        <div>
+            保留区域
+        </div>
+
+    </div>
+    <div class="clear-both">
+
+    </div>
+
+{% endblock %}
+
+{% block bottom-js %}
+    <script>
+        $(document).ready(function () {
+            var new_article_refresh = setInterval(function () {
+                var latest_article = $($(".wrap-left").children()[1]).attr("article_id");
+                $.getJSON("{% url 'get_latest_article_count' %}", {latest_id: latest_article}, function (callback) {
+                    console.log(callback);
+                    if (callback.new_article_count > 0) {
+                        //$(".new-article-notify").toggleClass("hide");
+                        if ($(".new-article-notify").hasClass("hide")){
+                            $(".new-article-notify").removeClass("hide");
+                        };
+                        $(".new-article-notify span").html(callback.new_article_count);
+
+                    };
+                });
+                //console.log(latest_article)
+
+            }, 30000);//end setInterval 30s
+        }); //end doc ready
+
+    </script>
+{% endblock %}

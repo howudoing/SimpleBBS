@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+
+{% block page_container %}
+    <h1>Webchat Room</h1>
+    <div class="chat-container">
+        <div class="left-contact-panel">
+            <div>
+                <!-- Nav tabs -->
+                <ul class="nav nav-tabs" role="tablist">
+                    <li role="presentation" class="active text-center" style="width: 50%"><a href="#contact-tab"
+                                                                                             role="tab"
+                                                                                             data-toggle="tab">Contact</a>
+                    </li>
+                    <li role="presentation" class="text-center" style="width: 50%"><a href="#group-tab" role="tab"
+                                                                                      data-toggle="tab">Group</a>
+                    </li>
+                </ul>
+
+                <!-- Tab panes -->
+                <div class="tab-content">
+                    <div role="tabpanel" class="tab-pane active" id="contact-tab">
+                        <ul class="list-group">
+                            {% for friend in request.user.userprofile.friends.select_related %}
+                                <li contact-type="single" contact-id="{{ friend.id }}" class="list-group-item"
+                                    onclick="OpenChatWindow(this)" style="cursor: pointer">
+                                    <span class="badge hide">0</span>
+                                    <span style="cursor: pointer" class="contact-name">{{ friend.name }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="group-tab">
+                        <ul class="list-group">
+                            {% for group in request.user.userprofile.group_members.select_related %}
+                                <li contact-type="group" contact-id="{{ group.id }}" class="list-group-item"
+                                    onclick="OpenChatWindow(this)" style="cursor: pointer">
+                                    <span class="badge hide">0</span>
+                                    <span style="cursor: pointer" class="contact-name">{{ group.name }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="right-chat-panel">
+            <div class="chat-box-title" contact-type="" contact-id="">
+                Webchat
+            </div>
+            <div class="chat-box-window">
+
+            </div>
+            <div class="chat-box-emoji">
+                <div class="col-md-6">
+                    <input type="file" id="file_upload">
+                </div>
+                <div>
+                    <span class="glyphicon glyphicon-upload" onclick="FileUpload()"></span>
+                </div>
+            </div>
+            <div class="chat-box-msg-box">
+
+                <textarea id="msg"></textarea>
+                <button id="send-msg-bt" class="bt btn-success">发送</button>
+            </div>
+        </div>
+        <div class="clear-both"></div>
+    </div>
+{% endblock %}
+
+
+{% block bottom-js %}
+    <script>
+        GLOBAL_CHAT_RECORD_DIC = {
+            'single': {},
+            'group': {},
+        }
+        $(document).ready(function () {
+            $.ajaxSetup({
+                beforeSend: function (xhr, settings) {
+                    if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+                        xhr.setRequestHeader("X-CSRFToken", csrftoken);
+                    }
+                }
+            });
+            $("#navbar a[href='{{ request.path }}']").parent().addClass('active');
+            $(".chat-box-msg-box").delegate("textarea", "keydown", function (e) {
+                //send msg button clicked
+                if (e.which == 13) {
+                    var contact_type = $(".chat-box-title").attr("contact-type");
+                    var contact_id = $(".chat-box-title").attr("contact-id");
+                    if (contact_type && contact_id) {
+                        var msg_text = $("#msg").val();
+                        if ($.trim(msg_text).length > 0) {
+                            //console.log(msg_text);
+                            SendMsg(msg_text);
+                            AddSentMsgIntoBox(msg_text,"text");
+                        } else {
+                            alert("不能发送空消息！");
+                        }
+                        e.preventDefault();
+                        $("#msg").val("");
+                    } else {
+                        e.preventDefault();
+                        $("#msg").val("");
+                        alert("请选择聊天对象!");
+                    }
+                }
+            });
+
+            //定时取消息
+            /*
+            var MsgRefresher = setInterval(function(){
+                GetNewMsgs();
+            }, 3000);*/
+            GetNewMsgs();
+        });
+
+        // using jQuery
+        function getCookie(name) {
+            var cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var cookie = jQuery.trim(cookies[i]);
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        var csrftoken = getCookie('csrftoken');
+
+        function csrfSafeMethod(method) {
+            // these HTTP methods do not require CSRF protection
+            return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+        }
+
+        function AddSentMsgIntoBox(msg_text, msg_type) {
+            if (msg_type == "text"){
+               var new_msg_ele = "<div class='msg-item'>" +
+                "<span>" + "{{ request.user.userprofile.name }}" + "</span>" + "<span>" +
+                new Date().toLocaleTimeString() + "</span>" +
+                "<div class='msg-text'>" + msg_text + "</div>" + "</div>";
+            }else if (msg_type == "image"){
+                var new_msg_ele = "<div class='msg-item'>" +
+                "<span>" + "{{ request.user.userprofile.name }}" + "</span>" + "<span>" +
+                new Date().toLocaleTimeString() + "</span>" +
+                "<div class='msg-text'><img src='/static/"+ "{{ request.user.userprofile.id }}/"+ msg_text + "'/></div>" + "</div>";
+            }
+
+            $(".chat-box-window").append(new_msg_ele);
+            //$(".chat-box-window").animate({scrollTop:$('.chat-box-window').height()},500)
+            $(".chat-box-window").animate({scrollTop: $('.chat-box-window')[0].scrollHeight}, 500);
+        };
+
+        function SendMsg(msg_text) {
+            var contact_type = $(".chat-box-title").attr("contact-type");
+            var contact_id = $(".chat-box-title").attr("contact-id");
+            if (contact_type && contact_id) {
+                var msg_item = {
+                    'from': "{{ request.user.userprofile.id }}",
+                    'from_name': "{{ request.user.userprofile.name }}",
+                    'to': contact_id,
+                    'type': contact_type,
+                    'msg': msg_text
+                }
+
+                $.post("{% url 'send_msg' %}", {data: JSON.stringify(msg_item)}, function (callback) {
+                    console.log(callback);
+                });
+            }
+        };
+
+        function OpenChatWindow(ele) {
+            //console.log(ele);
+            var current_session_id = $(".chat-box-title").attr("contact-id");
+            var current_session_type = $(".chat-box-title").attr("contact-type");
+            if (current_session_id) {
+                GLOBAL_CHAT_RECORD_DIC[current_session_type][current_session_id] = $(".chat-box-window").html();
+            }
+
+            $(ele).addClass("active");
+            $(ele).siblings().removeClass("active");
+            var contact_id = $(ele).attr("contact-id");
+            var contact_name = $(ele).find(".contact-name").text();
+            var contact_type = $(ele).attr("contact-type");
+            var chat_box_title_content = "正在跟" + contact_name + "聊天";
+            $(".chat-box-title").html(chat_box_title_content);
+            $(".chat-box-title").attr("contact-id", contact_id);
+            $(".chat-box-title").attr("contact-type", contact_type);
+
+            var new_contact_chat_record = "";
+            if (GLOBAL_CHAT_RECORD_DIC[contact_type][contact_id]) {
+                var new_contact_chat_record = GLOBAL_CHAT_RECORD_DIC[contact_type][contact_id];
+            }
+            $(".chat-box-window").html(new_contact_chat_record);
+            //hide new message notifier
+            var contact_ele = $(".list-group li[contact-type='" + contact_type + "']").filter("li[contact-id='" + contact_id + "']")[0];
+            $(contact_ele).find(".badge").text("0");
+            $(contact_ele).find(".badge").addClass("hide");
+
+        };
+
+        function GetNewMsgs() {
+            $.getJSON("{% url 'get_new_msg' %}", function (callback) {
+                console.log(callback);
+                ParseNewMsgs(callback);//把新消息进行解析
+
+                GetNewMsgs();
+            });
+        }
+
+        function ParseNewMsgs(callback) {
+            var current_session_type = $(".chat-box-title").attr("contact-type");
+            var current_session_id = $(".chat-box-title").attr("contact-id");
+
+            for (var i in callback) {
+                console.log(callback[i]);
+                if (callback[i]['type'] == 'single') {
+                    var msg_from_contact_id = callback[i]['from'];
+                } else {
+                    var msg_from_contact_id = callback[i]['to'];
+                }
+                var msg_item_ele = "<div class='msg-item'>" +
+                    "<span>" + callback[i]['from_name'] + "</span>" + "<span>" +
+                    callback[i]['timestamp'] + "</span>" +
+                    "<div class='msg-text'>" + callback[i]['msg'] + "</div>" + "</div>";
+
+
+                if (msg_from_contact_id == current_session_id && callback[i]['type'] == current_session_type) {
+                    //此消息的发送方当前正在跟我聊天
+                    $(".chat-box-window").append(msg_item_ele);
+                } else {
+                    //此消息发送者当前没打开聊天框，消息暂存内存
+                    if (GLOBAL_CHAT_RECORD_DIC[callback[i]['type']][msg_from_contact_id]) {
+                        GLOBAL_CHAT_RECORD_DIC[callback[i]['type']][msg_from_contact_id] += msg_item_ele;
+                    } else {
+                        GLOBAL_CHAT_RECORD_DIC[callback[i]['type']][msg_from_contact_id] = msg_item_ele;
+                    }
+                    //新消息提醒
+                    var contact_ele = $(".list-group li[contact-type='" + callback[i]['type'] + "']").filter("li[contact-id='" + msg_from_contact_id + "']")[0];
+                    var current_new_msg_num = $(contact_ele).find(".badge").text();
+                    $(contact_ele).find(".badge").removeClass("hide");
+                    $(contact_ele).find(".badge").text(parseInt(current_new_msg_num) + 1);
+
+                }
+            }
+        }
+        
+        function FileUpload() {
+            var formData = new FormData();
+            console.log($('#file_upload')[0].files[0]);
+            formData.append('file', $('#file_upload')[0].files[0]);
+            $.ajax({
+                url: "{% url 'file_upload' %}",
+                type: 'POST',
+                data: formData,
+                processData: false, //tell jQuery not to process the data
+            // 默认提交的post或者get请求会把后面的参数压缩成url参数专用的urlinto的格式，然后发送给后台。
+            // 但是我们这里发送的是文件，所以就上面的设置就告诉浏览器不用压缩了
+                contentType: false, //tell jQuery not to set contentType
+            // 不要加什么请求头，说白了就是原来是什么样就是什么样，不要给formDate加其他内容了。
+                success: function(data){
+                    console.log(data);
+                }
+            })
+        }
+    </script>
+{% endblock %}
